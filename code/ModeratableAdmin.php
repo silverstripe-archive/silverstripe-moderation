@@ -19,8 +19,8 @@ class ModeratableAdmin extends ModelAdmin {
 	public function init() {
 		parent::init();
 
-		Requirements::javascript('moderatable/javascript/ModeratableAdmin_right.js');
-		Requirements::css('moderatable/css/ModeratableAdmin.css');
+		Requirements::javascript('moderation/javascript/ModeratableAdmin_right.js');
+		Requirements::css('moderation/css/ModeratableAdmin.css');
 	}
 
 	function getManagedModels() {
