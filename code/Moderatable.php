@@ -31,7 +31,7 @@ class Moderatable extends DataObjectDecorator {
 	
 	function Approve() {
 		$this->owner->ModerationScore = $this->required_moderation_score;
-		$this->owner->SpamScore = $this->required_spam_score;
+		$this->owner->SpamScore = 0;
 		$this->owner->write();
 	}
 

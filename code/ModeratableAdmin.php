@@ -203,7 +203,11 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 				$templates[] = $class.'Moderation';
 			}
 			
-			$data = new ArrayData(array('ModerationLinks' => implode('',$links), 'Preview' => $do->renderWith($templates)));
+			$data = new ArrayData(array(
+				'ID' => $do->ID,
+				'ModerationLinks' => implode('',$links), 
+				'Preview' => $do->renderWith($templates)
+			));
 			$fields->push(new LiteralField("Item{$do->ID}", $data->renderWith('ModerationPreview')));
 		}
 
