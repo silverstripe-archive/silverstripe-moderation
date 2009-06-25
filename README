@@ -1,0 +1,41 @@
+###############################################
+Item Moderation Module
+###############################################
+
+25 June 2009
+
+Version: Early Days
+
+This is a module that adds moderation to any DataObject, page type or otherwise
+
+Maintainer Contact
+-----------------------------------------------
+Hamish Friedlander <hamish (at) silverstripe (dot) com>
+
+Installation Instructions
+-----------------------------------------------
+
+Bind the moderatable decorator to the DataObject type you wish to be able to rate in your sites _config.php
+
+Object::add_extension('Review', 'Moderatable');
+
+Usage Overview
+-----------------------------------------------
+
+Create a template called "{ClassName}Moderation", which is what is shown in the ModerationAdmin interface.
+Use Approved to get the currently approved items.
+
+Known issues
+-----------------------------------------------
+
+No pagination
+No default templates
+No documentation
+
+To Do
+-----------------------------------------------
+
+Fix the above
+Add spam scoring
+Flesh out user moderation system
+Add tests
