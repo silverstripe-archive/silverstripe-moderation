@@ -4,7 +4,7 @@ Item Moderation Module
 
 25 June 2009
 
-Version: Early Days
+Version: Slightly Stable
 
 This is a module that adds moderation to any DataObject, page type or otherwise
 
@@ -28,7 +28,7 @@ Use Approved to get the currently approved items.
 Known issues
 -----------------------------------------------
 
-No pagination
+Pagination doesn't work with 'All'
 No default templates
 No documentation
 

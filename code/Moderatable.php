@@ -35,12 +35,13 @@ class Moderatable extends DataObjectDecorator {
 		$this->owner->write();
 	}
 
-	function AreApproved($filter = null, $sort = null, $join = null) {
+	function AreApproved($filter = null, $sort = null, $join = null, $limit=null) {
 		return DataObject::get(
 			$this->owner->ClassName, 
 			sprintf(self::$wheres['approved'], $this->required_spam_score, $this->required_moderation_score) . ($filter ? " AND $filter" : ''),
 			$sort,
-			$join
+			$join,
+			$limit
 		);
 	}
 	
@@ -55,12 +56,13 @@ class Moderatable extends DataObjectDecorator {
 		$this->owner->write();
 	}
 	
-	function AreUnapproved($filter = null, $sort = null, $join = null) {
+	function AreUnapproved($filter = null, $sort = null, $join = null, $limit=null) {
 		return DataObject::get(
 			$this->owner->ClassName, 
 			sprintf(self::$wheres['unapproved'], $this->required_spam_score, $this->required_moderation_score) . ($filter ? " AND $filter" : ''),
 			$sort,
-			$join
+			$join,
+			$limit
 		);
 	}
 	
@@ -81,12 +83,13 @@ class Moderatable extends DataObjectDecorator {
 		$this->owner->write();
 	}
 	
-	function AreSpam($filter = null, $sort = null, $join = null) {
+	function AreSpam($filter = null, $sort = null, $join = null, $limit=null) {
 		return DataObject::get(
 			$this->owner->ClassName, 
 			sprintf(self::$wheres['spam'], $this->required_spam_score, $this->required_moderation_score) . ($filter ? " AND $filter" : ''),
 			$sort,
-			$join
+			$join,
+			$limit
 		);
 	}
 	

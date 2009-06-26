@@ -64,32 +64,27 @@ class ModeratableAdmin extends ModelAdmin {
 		$className = Convert::raw2sql($this->urlParams['ClassName']);
 		
 		if ($do = DataObject::get_by_id($className, $id)) {
-			FormResponse::add('$("Form_EditForm").elementMoved('.$do->ID.');');
 			
+			FormResponse::add('$("moderation").elementMoved('.$do->ID.');');
 			switch ($this->urlParams['Command']) {
 				case 'delete':
 					$do->delete();
-					FormResponse::status_message("$className deleted", 'good');
 					break;
 
 				case 'isspam':
 					$do->IsSpam();
-					FormResponse::status_message("$className set as spam", 'good');
 					break;
 					
 				case 'isham':
 					$do->IsHam();
-					FormResponse::status_message("$className set as ham", 'good');
 					break;
 				
 				case 'approve':
 					$do->Approve();
-					FormResponse::status_message("$className accepted", 'good');
 					break;
 					
 				case 'unapprove':
 					$do->Unapprove();
-					FormResponse::status_message("$className accepted", 'good');
 					break;
 					
 				default:
@@ -106,6 +101,8 @@ class ModeratableAdmin extends ModelAdmin {
 
 class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionController {
 
+	static $page_length = 4;
+	
 	/* We can't create or import reviews in this model admin */
 	public function CreateForm() { return null; }
 	public function ImportForm() { return null; }
@@ -128,6 +125,8 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 			),
 			'unapproved'
 		));
+
+		$fields->push(new HiddenField('Page','Page',0));
 		
 		$form = new Form($this, "SearchForm",
 			$fields,
@@ -146,21 +145,15 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 	}
 	
 	function search($request, $form) {
-		// Get the results form to be rendered
-		$resultsForm = $this->ResultsForm(array_merge($form->getData(), $request));
-		
 		return new HTTPResponse(
-			$resultsForm->forTemplate(), 
+			$this->Results(array_merge($form->getData(), $request)), 
 			200, 
 			'Search completed'
 		);
 	}
-		
-	public function ResultsForm($searchCriteria) {
-		if($searchCriteria instanceof HTTPRequest) $searchCriteria = $searchCriteria->getVars();
-		$section = $searchCriteria['State'];
-		
-		switch ($section) {
+	
+	public function Results($searchCriteria) {
+		switch ($searchCriteria['State']) {
 			case 'approved':
 				$method = 'AreApproved';
 				$title = "Approved";
@@ -187,10 +180,29 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 			}
 		}
 		else {
-			$ds = singleton($class)->$method("({$this->getSearchQuery($searchCriteria)->getFilter()})", 'Created');
+			$ds = singleton($class)->$method(
+				"({$this->getSearchQuery($searchCriteria)->getFilter()})", 
+				'Created', 
+				null, 
+				($searchCriteria['Page']*self::$page_length).','.self::$page_length
+			);
 		}
 
+		if (!$ds) return '<p>No Results</p>';
+		
+		$blocks = array();
+		$paging = array();
+		
 		$fields = new FieldSet();
+		foreach ($searchCriteria as $k => $v) {
+			if ($k != 'SecurityID') $fields->push(new HiddenField($k, $k, $v));
+		}
+		
+		$form = new Form($this, 'SearchForm', $fields, new FieldSet());
+		$form->setHTMLID('Form_CurrentSearchForm');
+		
+		$blocks[] = $form->forTemplate();
+		
 		if ($ds) foreach ($ds as $do) {
 			$links = array();
 			foreach ($commands as $command => $text) {
@@ -208,14 +220,24 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 				'ModerationLinks' => implode('',$links), 
 				'Preview' => $do->renderWith($templates)
 			));
-			$fields->push(new LiteralField("Item{$do->ID}", $data->renderWith('ModerationPreview')));
+			
+			$blocks[] = $data->renderWith('ModerationPreview');
 		}
 
-		return new Form(
-			$this, 'EditForm', 
-			$fields,
-			new FieldSet()
-		);
+		if ($ds->MoreThanOnePage()) {
+			// Build search info
+			$paging[] = '<div>Viewing Page '.$ds->CurrentPage().' of '.$ds->TotalPages().'</div>';
+			if ($ds->NotFirstPage()) $paging[] = "<input class='action pageaction' type='button' value='Prev' action='prev' />";
+			if ($ds->NotLastPage()) $paging[] = "<input class='action pageaction' type='button' value='Next' action='next' />";
+		}
+
+		$data = new ArrayData(array(
+			'State' => ucwords($searchCriteria['State']),
+			'Class' => $this->getModelClass(),
+			'Pagination' => implode("\n", $paging),
+			'Moderation' => implode("\n", $blocks)
+		));
+		return $data->renderWith('Moderation');
 	}
 }
 
