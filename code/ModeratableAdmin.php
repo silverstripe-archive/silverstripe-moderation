@@ -72,19 +72,19 @@ class ModeratableAdmin extends ModelAdmin {
 					break;
 
 				case 'isspam':
-					$do->IsSpam();
+					$do->MarkSpam();
 					break;
 					
 				case 'isham':
-					$do->IsHam();
+					$do->MarkHam();
 					break;
 				
 				case 'approve':
-					$do->Approve();
+					$do->MarkApproved();
 					break;
 					
 				case 'unapprove':
-					$do->Unapprove();
+					$do->MarkUnapproved();
 					break;
 					
 				default:

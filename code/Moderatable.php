@@ -10,7 +10,24 @@ class Moderatable extends DataObjectDecorator {
 		'unapproved' => '((SpamScore < %F OR SpamScore IS NULL) AND (ModerationScore < %F OR ModerationScore IS NULL))',
 		'spam'       => '(SpamScore >= %F)',
 	);
-	
+
+	// Return true if instance is approved. Logic needs to reflect SQL logic in $wheres above.
+	function isApproved() {
+		return $this->owner->SpamScore < $this->required_spam_score &&
+			   $this->owner->ModerationScore >= $this->required_moderation_score;
+	}
+
+	// Return true if instance is unapproved. Logic needs to reflect SQL logic in $wheres above.
+	function isUnapproved() {
+		return $this->owner->SpamScore < $this->required_spam_score &&
+			   $this->owner->ModerationScore < $this->required_moderation_score;
+	}
+
+	// Return true if instance is spam. Logic needs to reflect SQL logic in $wheres above.
+	function isSpam() {
+		return $this->owner->SpamScore >= $this->required_spam_score;
+	}
+
 	function extraStatics() {
 		return array(
 			'db' => array(
@@ -29,10 +46,14 @@ class Moderatable extends DataObjectDecorator {
 		$this->required_spam_score = $spam_score ? $spam_score : $this->stat('default_spam_score');
 	}
 	
-	function Approve() {
+	function MarkApproved() {
 		$this->owner->ModerationScore = $this->required_moderation_score;
 		$this->owner->SpamScore = 0;
 		$this->owner->write();
+
+		if (method_exists($this->owner, "onAfterApprove")) {
+			$this->owner->onAfterApprove();
+		}
 	}
 
 	function AreApproved($filter = null, $sort = null, $join = null, $limit=null) {
@@ -51,11 +72,22 @@ class Moderatable extends DataObjectDecorator {
 		return $res ? $res : 0;
 	}
 	
-	function Unapprove() {
+	function MarkUnapproved() {
 		$this->owner->ModerationScore = 0;
 		$this->owner->write();
+
+		if (method_exists($this->owner, "onAfterUnapprove")) {
+			$this->owner->onAfterUnapprove();
+		}
 	}
-	
+
+	/**
+	 * Called after unapproval. Override as required, but don't forget to call parent.
+	 * $this is the decorator.
+	 */
+	protected function onAfterUnapprove() {
+	}
+
 	function AreUnapproved($filter = null, $sort = null, $join = null, $limit=null) {
 		return DataObject::get(
 			$this->owner->ClassName, 
@@ -72,13 +104,13 @@ class Moderatable extends DataObjectDecorator {
 		return $res ? $res : 0;
 	}
 	
-	function IsSpam() {
+	function MarkSpam() {
 		$this->owner->SpamScore = $this->required_spam_score;
 		$this->owner->ModerationScore = 0; // When marked as spam, item loses it's moderation approval
 		$this->owner->write();
 	}
 	
-	function IsHam() {
+	function MarkHam() {
 		$this->owner->SpamScore = 0;
 		$this->owner->write();
 	}
