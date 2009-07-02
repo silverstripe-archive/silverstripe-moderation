@@ -81,13 +81,6 @@ class Moderatable extends DataObjectDecorator {
 		}
 	}
 
-	/**
-	 * Called after unapproval. Override as required, but don't forget to call parent.
-	 * $this is the decorator.
-	 */
-	protected function onAfterUnapprove() {
-	}
-
 	function AreUnapproved($filter = null, $sort = null, $join = null, $limit=null) {
 		return DataObject::get(
 			$this->owner->ClassName, 
