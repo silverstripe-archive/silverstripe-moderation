@@ -181,7 +181,7 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 		}
 		else {
 			$ds = singleton($class)->$method(
-				"({$this->getSearchQuery($searchCriteria)->getFilter()})", 
+				"{$this->getSearchQuery($searchCriteria)->getFilter()}", 
 				'Created', 
 				null, 
 				($searchCriteria['Page']*self::$page_length).','.self::$page_length
