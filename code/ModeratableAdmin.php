@@ -62,8 +62,8 @@ class ModeratableAdmin extends ModelAdmin {
 	function moderate() {
 		$id = (int)$this->urlParams['ID'];
 		$className = Convert::raw2sql($this->urlParams['ClassName']);
-		
-		if ($do = DataObject::get_by_id($className, $id)) {
+
+		if ($do = Moderatable::get_by_id_unfiltered($className, $id) /*DataObject::get_by_id($className, $id)*/) {
 			
 			FormResponse::add('$("moderation").elementMoved('.$do->ID.');');
 			switch ($this->urlParams['Command']) {
@@ -92,7 +92,7 @@ class ModeratableAdmin extends ModelAdmin {
 					FormResponse::status_message("Command invalid", 'bad');
 			}
 		}
-		else FormResponse::status_message("$className $ID not found", 'bad');
+		else FormResponse::status_message("$className $id not found", 'bad');
 		
 		return FormResponse::respond();
 	}
@@ -155,19 +155,22 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 	public function Results($searchCriteria) {
 		switch ($searchCriteria['State']) {
 			case 'approved':
-				$method = 'AreApproved';
+//				$method = 'AreApproved';
+				$moderationState = "approved";
 				$title = "Approved";
 				$commands = array('unapprove' => 'Unapprove', 'isspam' => 'Is Spam');
 				break;
 				
 			case 'unapproved':
-				$method = 'AreUnapproved';
+//				$method = 'AreUnapproved';
+				$moderationState = "unapproved";
 				$title = "Waiting Moderation";
 				$commands = array('approve' => 'Approve', 'isspam' => 'Is Spam');
 				break;
 				
 			default:
-				$method = 'AreSpam';
+//				$method = 'AreSpam';
+				$moderationState = "spam";
 				$title = "Spam";
 				$commands = array('approve' => 'Approve', 'isham' => 'Not Spam');
 		}
@@ -176,16 +179,20 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 		if(($class = $this->getModelClass()) == 'All') {
 			$ds = new DataObjectSet();
 			foreach ($this->parentController->getManagedModels() as $class) {
-				if ($class != 'All') $ds->merge(singleton($class)->$method('', 'Created'));
+				if ($class != 'All') $ds->merge(singleton($class)->getModeratedItems($moderationState, '', 'Created'));
 			}
 		}
 		else {
-			$ds = singleton($class)->$method(
-				"{$this->getSearchQuery($searchCriteria)->getFilter()}", 
-				'Created', 
-				null, 
+			Moderatable::push_state($moderationState);
+
+			$ds = DataObject::get(
+				singleton($class)->owner->ClassName  /*$this->owner->ClassName */, 
+				"{$this->getSearchQuery($searchCriteria)->getFilter()}",
+				'Created',
+				null,
 				($searchCriteria['Page']*self::$page_length).','.self::$page_length
 			);
+			Moderatable::pop_state();
 		}
 
 		if (!$ds) return '<p>No Results</p>';
