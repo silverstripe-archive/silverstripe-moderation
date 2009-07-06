@@ -183,7 +183,7 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 			}
 		}
 		else {
-			Moderatable::push_state($moderationState);
+			Moderatable::state()->push_state($moderationState);
 
 			$ds = DataObject::get(
 				singleton($class)->owner->ClassName  /*$this->owner->ClassName */, 
@@ -192,7 +192,7 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 				null,
 				($searchCriteria['Page']*self::$page_length).','.self::$page_length
 			);
-			Moderatable::pop_state();
+			Moderatable::state()->pop_state();
 		}
 
 		if (!$ds) return '<p>No Results</p>';
