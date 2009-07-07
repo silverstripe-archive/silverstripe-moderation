@@ -48,6 +48,8 @@ class Moderatable extends DataObjectDecorator {
 	}
 
 	function __construct($moderation_score = null, $spam_score = null) {
+		parent::__construct();
+
 		$this->required_moderation_score = $moderation_score ? $moderation_score : $this->stat('default_moderation_score');
 		$this->required_spam_score = $spam_score ? $spam_score : $this->stat('default_spam_score');
 	}
@@ -67,28 +69,15 @@ class Moderatable extends DataObjectDecorator {
 		}
 	}
 
-	// Get an instance of the decorated class by ID, without applying filtering. Should only be used by admin interface.
-	public static function get_by_id_unfiltered($className, $id) {
-		self::state()->push_state("any");
-		$result = DataObject::get_by_id($className, $id);
-		self::state()->pop_state();
-		return $result;
+	// Get the list of things to moderate. We just filter items by the current moderation state.
+	public function getItemsToModerate($className, $filter, $order, $join, $limit) {
+		return DataObject::get(
+			$className,
+			$filter,
+			$order,
+			$join,
+			$limit);
 	}
-	
-
-	/**
-	 * Get all items of the decorated class that match criteria. Moderation filtering is applied by augmentSQL.
-	 */
-//	function getModeratedItems(/*$moderationState, */ $filter = null, $sort = null, $join = null, $limit=null) {
-//		$result = DataObject::get(
-//			$this->owner->ClassName, 
-//			$filter,
-//			$sort,
-//			$join,
-//			$limit
-//		);
-//		return $result;
-//	}*/
 
 	/**
 	 * Count the number of items of the decorated class that have the specified moderation count.
@@ -102,33 +91,45 @@ class Moderatable extends DataObjectDecorator {
 		return $res ? $res : 0;
 	}*/
 	
-	function MarkApproved() {
-		$this->owner->ModerationScore = $this->required_moderation_score;
-		$this->owner->SpamScore = 0;
-		$this->owner->write();
+	function markApproved($className, $id) {
+		if (!($obj = DataObject::get_one($className, "ID = $id")))
+			return "Could not locate object $id of type $className";
 
-		if (method_exists($this->owner, "onAfterApprove")) {
-			$this->owner->onAfterApprove();
+		$obj->ModerationScore = $this->required_moderation_score;
+		$obj->SpamScore = 0;
+		$obj->write();
+
+		if (method_exists($obj, "onAfterApprove")) {
+			$obj->onAfterApprove();
 		}
 	}
 
-	function MarkUnapproved() {
-		$this->owner->ModerationScore = 0;
-		$this->owner->write();
+	function markUnapproved($className, $id) {
+		if (!($obj = DataObject::get_one($className, "ID = $id")))
+			return "Could not locate object $id of type $className";
 
-		if (method_exists($this->owner, "onAfterUnapprove")) {
-			$this->owner->onAfterUnapprove();
+		$obj->ModerationScore = 0;
+		$obj->write();
+
+		if (method_exists($obj, "onAfterUnapprove")) {
+			$obj->onAfterUnapprove();
 		}
 	}
 
-	function MarkSpam() {
-		$this->owner->SpamScore = $this->required_spam_score;
-		$this->owner->ModerationScore = 0; // When marked as spam, item loses it's moderation approval
-		$this->owner->write();
+	function markSpam($className, $id) {
+		if (!($obj = DataObject::get_one($className, "ID = $id")))
+			return "Could not locate object $id of type $className";
+
+		$obj->SpamScore = $this->required_spam_score;
+		$obj->ModerationScore = 0; // When marked as spam, item loses it's moderation approval
+		$obj->write();
 	}
 	
-	function MarkHam() {
-		$this->owner->SpamScore = 0;
-		$this->owner->write();
+	function markHam($className, $id) {
+		if (!($obj = DataObject::get_one($className, "ID = $id")))
+			return "Could not locate object $id of type $className";
+
+		$obj->SpamScore = 0;
+		$obj->write();
 	}
 }

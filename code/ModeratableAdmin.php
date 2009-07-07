@@ -13,7 +13,7 @@ class ModeratableAdmin extends ModelAdmin {
 		'$ClassName!/$ID!/$Command!' => 'moderate',
 	);
 	
-	static $managed_models = 'decorator:Moderatable';
+	static $managed_models = 'decorator:Moderatable,decorator:VersionedModeratable';
 	static $collection_controller_class = "ModeratableAdmin_CollectionController";
 	
 	public function init() {
@@ -25,12 +25,17 @@ class ModeratableAdmin extends ModelAdmin {
 
 	function getManagedModels() {
 		$classes = $this->stat('managed_models');
-		
+
 		if (is_string($classes)) {
-			if (preg_match('/^decorator:(.*)/', $classes, $match)) {
+			$matches = explode(",", $classes);
+			foreach ($matches as $key => $value) $matches[$key] = substr($value,10); // remove "decorator:" 
+			if (is_array($matches)) {
 				$classes = array();
 				foreach (ClassInfo::subclassesFor('DataObject') as $class) {
-					if (Object::has_extension($class, $match[1])) $classes[] = $class;
+					$add = false; // used to guarantee that if multiple matches on a class it's not added multiple times.
+					foreach ($matches as $match)
+						if (Object::has_extension($class, $match)) $add = true;
+					if ($add) $classes[] = $class;
 				}
 				if (count($class) > 1) array_unshift($classes, 'All');
 			}
@@ -63,37 +68,26 @@ class ModeratableAdmin extends ModelAdmin {
 		$id = (int)$this->urlParams['ID'];
 		$className = Convert::raw2sql($this->urlParams['ClassName']);
 
-		if ($do = Moderatable::get_by_id_unfiltered($className, $id) /*DataObject::get_by_id($className, $id)*/) {
-			
-			FormResponse::add('$("moderation").elementMoved('.$do->ID.');');
-			switch ($this->urlParams['Command']) {
-				case 'delete':
-					$do->delete();
-					break;
+		$methods = array(
+			"delete"		=> "delete",
+			"isspam"		=> "markSpam",
+			"isham"			=> "markHam",
+			"approve"		=> "markApproved",
+			"unapprove"		=> "markUnapproved"
+		);
 
-				case 'isspam':
-					$do->MarkSpam();
-					break;
-					
-				case 'isham':
-					$do->MarkHam();
-					break;
-				
-				case 'approve':
-					$do->MarkApproved();
-					break;
-					
-				case 'unapprove':
-					$do->MarkUnapproved();
-					break;
-					
-				default:
-					FormResponse::clear();
-					FormResponse::status_message("Command invalid", 'bad');
-			}
+		$method = $methods[$this->urlParams['Command']];
+		if (!$method) {
+			FormResponse::clear();
+			FormResponse::status_message("Command invalid", 'bad');
 		}
-		else FormResponse::status_message("$className $id not found", 'bad');
-		
+		else if ($error = singleton($className)->$method($className, $id)) {
+			FormResponse::status_message($error, 'bad');
+		}
+		else {
+			FormResponse::add('$("moderation").elementMoved('.$id.');');
+		}
+
 		return FormResponse::respond();
 	}
 	
@@ -155,21 +149,18 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 	public function Results($searchCriteria) {
 		switch ($searchCriteria['State']) {
 			case 'approved':
-//				$method = 'AreApproved';
 				$moderationState = "approved";
 				$title = "Approved";
 				$commands = array('unapprove' => 'Unapprove', 'isspam' => 'Is Spam');
 				break;
 				
 			case 'unapproved':
-//				$method = 'AreUnapproved';
 				$moderationState = "unapproved";
 				$title = "Waiting Moderation";
 				$commands = array('approve' => 'Approve', 'isspam' => 'Is Spam');
 				break;
 				
 			default:
-//				$method = 'AreSpam';
 				$moderationState = "spam";
 				$title = "Spam";
 				$commands = array('approve' => 'Approve', 'isham' => 'Not Spam');
@@ -183,16 +174,17 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 			}
 		}
 		else {
-			Moderatable::state()->push_state($moderationState);
+			$o = singleton($class);
+			$o->moderationState()->push_state($moderationState);
 
-			$ds = DataObject::get(
-				singleton($class)->owner->ClassName  /*$this->owner->ClassName */, 
+			$ds = singleton($class)->getItemsToModerate(
+				$o->owner->ClassName,
 				"{$this->getSearchQuery($searchCriteria)->getFilter()}",
 				'Created',
 				null,
-				($searchCriteria['Page']*self::$page_length).','.self::$page_length
-			);
-			Moderatable::state()->pop_state();
+				($searchCriteria['Page']*self::$page_length).','.self::$page_length);
+
+			$o->moderationState()->pop_state();
 		}
 
 		if (!$ds) return '<p>No Results</p>';
