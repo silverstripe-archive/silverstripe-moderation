@@ -76,7 +76,7 @@ class ModeratableAdmin extends ModelAdmin {
 			"unapprove"		=> "markUnapproved"
 		);
 
-		ModeratableState::push_state('all');
+		ModeratableState::push_state('any');
 		
 		$method = $methods[$this->urlParams['Command']];
 		if (!$method) {

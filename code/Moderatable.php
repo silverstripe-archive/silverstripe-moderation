@@ -59,8 +59,8 @@ class Moderatable extends DataObjectDecorator {
 		// beyond a 3 banana problem.
 		if ($query->connective == "OR") throw new Exception("Moderatable can't filter on a disjunctive query");
 
-		if (self::state()->moderationState != "any") {
-			$query->where['MSplit'] = sprintf(self::$wheres[self::state()->moderationState], $this->required_spam_score, $this->required_moderation_score);
+		if (ModeratableState::$state != "any") {
+			$query->where['MSplit'] = sprintf(self::$wheres[ModeratableState::$state], $this->required_spam_score, $this->required_moderation_score);
 		}
 	}
 	
@@ -78,7 +78,7 @@ class Moderatable extends DataObjectDecorator {
 		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
 	}
 
-	function markUnapproved($dec, $obj) {
+	function markUnapproved() {
 		$old_state = $this->ModerationState();
 				
 		$this->owner->ModerationScore = 0;
@@ -87,7 +87,7 @@ class Moderatable extends DataObjectDecorator {
 		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
 	}
 
-	function markSpam($dec, $obj) {
+	function markSpam() {
 		$old_state = $this->ModerationState();
 				
 		$this->owner->SpamScore = $this->required_spam_score;
@@ -97,7 +97,7 @@ class Moderatable extends DataObjectDecorator {
 		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
 	}
 	
-	function markHam($dec, $obj) {
+	function markHam() {
 		$old_state = $this->ModerationState();
 				
 		$this->owner->SpamScore = 0;
