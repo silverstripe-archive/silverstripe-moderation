@@ -69,7 +69,7 @@ class ModeratableAdmin extends ModelAdmin {
 		$className = Convert::raw2sql($this->urlParams['ClassName']);
 
 		$methods = array(
-			"delete"		=> "delete",
+			"delete"		=> "moderatorDelete",
 			"isspam"		=> "markSpam",
 			"isham"			=> "markHam",
 			"approve"		=> "markApproved",

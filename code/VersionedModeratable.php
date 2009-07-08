@@ -187,16 +187,41 @@ class VersionedModeratable extends Versioned {
 		if (method_exists($this->owner, "onAfterApprove")) {
 			$this->owner->onAfterApprove();
 		}
-		
 	}
 
 	/**
 	 * Delete the selected instance. If the item is currently live and approved, delete this live item, and see if there is an
 	 * older approved item to replace it with. If this is an unapproved item, delete this version from stage.
 	 */
-	public function delete($className, $id) {
+	public function moderatorDelete($className, $id) {
 		$this->moderationState()->push_state("any");
 
+		// If it's live, delete it from live
+		$liveObj = self::get_one_by_stage(
+			$className,
+			$this->liveStage,
+			"ID = $id");
+		$stageObj = self::get_one_by_stage(
+			$className,
+			$this->defaultStage,
+			"ID = $id");
+	
+		// Delete it from stage whether approved or not.
+		$stageObj->deleteFromStage($this->defaultStage);
+
+		// If the live version is the same one, delete that too.
+		if ($stageObj->Version == $liveObj->Version)
+			$liveObj->deleteFromStage($this->liveStage);
+
+		// Get the next older item
+		$versions = $this->allVersions();
+
+		if ($versions && ($previous = $versions->First()))
+		{
+			// Publish $olderApproved by version no
+			$previous->publish($previous->Version, "Stage");
+			if ($previous->isApproved()) $previous->publish($previous->Version, "Live");
+		}
 		$this->moderationState()->pop_state();
 	}
 
