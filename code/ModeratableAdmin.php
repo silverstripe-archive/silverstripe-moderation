@@ -76,18 +76,22 @@ class ModeratableAdmin extends ModelAdmin {
 			"unapprove"		=> "markUnapproved"
 		);
 
+		ModeratableState::push_state('all');
+		
 		$method = $methods[$this->urlParams['Command']];
 		if (!$method) {
 			FormResponse::clear();
 			FormResponse::status_message("Command invalid", 'bad');
 		}
-		else if ($error = singleton($className)->$method($className, $id)) {
+		else if ($error = DataObject::get_by_id($className, $id)->$method()) {
 			FormResponse::status_message($error, 'bad');
 		}
 		else {
 			FormResponse::add('$("moderation").elementMoved('.$id.');');
 		}
 
+		ModeratableState::pop_state();
+		
 		return FormResponse::respond();
 	}
 	
@@ -149,7 +153,7 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 	public function Results($searchCriteria) {
 		switch ($searchCriteria['State']) {
 			case 'approved':
-				$moderationState = "approved";
+				$moderationState = "approved_if_latest";
 				$title = "Approved";
 				$commands = array('unapprove' => 'Unapprove', 'isspam' => 'Is Spam');
 				break;
@@ -174,17 +178,17 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 			}
 		}
 		else {
-			$o = singleton($class);
-			$o->moderationState()->push_state($moderationState);
+			ModeratableState::push_state($moderationState);
 
-			$ds = singleton($class)->getItemsToModerate(
-				$o->owner->ClassName,
+			$ds = DataObject::get(
+				$class,
 				"{$this->getSearchQuery($searchCriteria)->getFilter()}",
 				'Created',
 				null,
-				($searchCriteria['Page']*self::$page_length).','.self::$page_length);
+				($searchCriteria['Page']*self::$page_length).','.self::$page_length
+			);
 
-			$o->moderationState()->pop_state();
+			ModeratableState::pop_state();
 		}
 
 		if (!$ds) return '<p>No Results</p>';

@@ -11,29 +11,22 @@ class Moderatable extends DataObjectDecorator {
 		'spam'       => '(SpamScore >= %F)',
 	);
 
-	// Return true if instance is approved. Logic needs to reflect SQL logic in $wheres above.
-	function isApproved() {
-		return $this->owner->SpamScore < $this->required_spam_score &&
-			   $this->owner->ModerationScore >= $this->required_moderation_score;
+	public function ModerationState() {
+		return ModeratableState::moderation_state($this, $this->owner);
+	}
+	
+	public function isApproved() {
+		return $this->ModerationState() == 'approved';
 	}
 
-	// Return true if instance is unapproved. Logic needs to reflect SQL logic in $wheres above.
-	function isUnapproved() {
-		return $this->owner->SpamScore < $this->required_spam_score &&
-			   $this->owner->ModerationScore < $this->required_moderation_score;
+	public function isUnapproved() {
+		return $this->ModerationState() == 'unapproved';
 	}
 
-	// Return true if instance is spam. Logic needs to reflect SQL logic in $wheres above.
-	function isSpam() {
-		return $this->owner->SpamScore >= $this->required_spam_score;
+	public function isSpam() {
+		return $this->ModerationState() == 'spam';
 	}
-
-	static function state() {
-		if (!self::$_state)
-			self::$_state = new ModeratableState();
-		return self::$_state;	
-	}
-
+	
 	function extraStatics() {
 		return array(
 			'db' => array(
@@ -65,71 +58,23 @@ class Moderatable extends DataObjectDecorator {
 		if ($query->connective == "OR") throw new Exception("Moderatable can't filter on a disjunctive query");
 
 		if (self::state()->moderationState != "any") {
-			$query->where(sprintf(self::$wheres[self::state()->moderationState], $this->required_spam_score, $this->required_moderation_score));
+			$query->where['MSplit'] = sprintf(self::$wheres[self::state()->moderationState], $this->required_spam_score, $this->required_moderation_score);
 		}
 	}
-
-	// Get the list of things to moderate. We just filter items by the current moderation state.
-	public function getItemsToModerate($className, $filter, $order, $join, $limit) {
-		return DataObject::get(
-			$className,
-			$filter,
-			$order,
-			$join,
-			$limit);
-	}
-
-	/**
-	 * Count the number of items of the decorated class that have the specified moderation count.
-	 */
-/*	function ModerationCount($state = "approved") {
-		$table = array_pop(ClassInfo::dataClassesFor($this->owner->class));
-		$res = DB::query("SELECT COUNT(*) FROM {$table} " .
-							(($state == "any") ? "" :
-							 (" WHERE ". sprintf(self::$wheres['approved'], $this->required_spam_score, $this->required_moderation_score))) .
-							)->value();
-		return $res ? $res : 0;
-	}*/
 	
-	function markApproved($className, $id) {
-		if (!($obj = DataObject::get_one($className, "ID = $id")))
-			return "Could not locate object $id of type $className";
-
-		$obj->ModerationScore = $this->required_moderation_score;
-		$obj->SpamScore = 0;
-		$obj->write();
-
-		if (method_exists($obj, "onAfterApprove")) {
-			$obj->onAfterApprove();
-		}
+	function markApproved() {
+		ModeratableState::mark_approved($this, $this->owner);
 	}
 
 	function markUnapproved($className, $id) {
-		if (!($obj = DataObject::get_one($className, "ID = $id")))
-			return "Could not locate object $id of type $className";
-
-		$obj->ModerationScore = 0;
-		$obj->write();
-
-		if (method_exists($obj, "onAfterUnapprove")) {
-			$obj->onAfterUnapprove();
-		}
+		ModeratableState::mark_unapproved($this, $this->owner);
 	}
 
 	function markSpam($className, $id) {
-		if (!($obj = DataObject::get_one($className, "ID = $id")))
-			return "Could not locate object $id of type $className";
-
-		$obj->SpamScore = $this->required_spam_score;
-		$obj->ModerationScore = 0; // When marked as spam, item loses it's moderation approval
-		$obj->write();
+		ModeratableState::mark_spam($this, $this->owner);
 	}
 	
 	function markHam($className, $id) {
-		if (!($obj = DataObject::get_one($className, "ID = $id")))
-			return "Could not locate object $id of type $className";
-
-		$obj->SpamScore = 0;
-		$obj->write();
+		ModeratableState::mark_ham($this, $this->owner);
 	}
 }
