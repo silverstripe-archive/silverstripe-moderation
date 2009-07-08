@@ -11,8 +11,10 @@ class Moderatable extends DataObjectDecorator {
 		'spam'       => '(SpamScore >= %F)',
 	);
 
-	public function ModerationState() {
-		return ModeratableState::moderation_state($this, $this->owner);
+	function ModerationState() {
+		if ($this->owner->SpamScore >= $this->required_spam_score) return 'spam';
+		if ($this->owner->ModerationScore >= $this->required_moderation_score) return 'approved';
+		return 'unapproved';
 	}
 	
 	public function isApproved() {
@@ -62,19 +64,45 @@ class Moderatable extends DataObjectDecorator {
 		}
 	}
 	
-	function markApproved() {
-		ModeratableState::mark_approved($this, $this->owner);
-	}
-
-	function markUnapproved($className, $id) {
-		ModeratableState::mark_unapproved($this, $this->owner);
-	}
-
-	function markSpam($className, $id) {
-		ModeratableState::mark_spam($this, $this->owner);
+	function onModerationStateChange() {
+		if (method_exists($this->owner, "onModerationStateChange")) $this->owner->onModerationStateChange($this->ModerationState());
 	}
 	
-	function markHam($className, $id) {
-		ModeratableState::mark_ham($this, $this->owner);
+	function markApproved() {
+		$old_state = $this->ModerationState();
+		
+		$this->owner->ModerationScore = $this->required_moderation_score;
+		$this->owner->SpamScore = 0;
+		$this->owner->write();
+
+		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
+	}
+
+	function markUnapproved($dec, $obj) {
+		$old_state = $this->ModerationState();
+				
+		$this->owner->ModerationScore = 0;
+		$this->owner->write();
+
+		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
+	}
+
+	function markSpam($dec, $obj) {
+		$old_state = $this->ModerationState();
+				
+		$this->owner->SpamScore = $this->required_spam_score;
+		$this->owner->ModerationScore = 0; // When marked as spam, item loses it's moderation approval
+		$this->owner->write();
+		
+		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
+	}
+	
+	function markHam($dec, $obj) {
+		$old_state = $this->ModerationState();
+				
+		$this->owner->SpamScore = 0;
+		$this->owner->write();
+		
+		if ($old_state != $this->ModerationState()) $this->onModerationStateChange();
 	}
 }

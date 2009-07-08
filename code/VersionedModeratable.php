@@ -38,10 +38,6 @@ class VersionedModeratable extends Versioned {
 		'spam'       => '(%T.SpamScore >= %F)',
 	);
 	
-	public function ModerationState() {
-		return ModeratableState::moderation_state($this, $this->owner);
-	}
-	
 	// Return true if instance is approved. Logic needs to reflect SQL logic in $wheres above.
 	public function isApproved() {
 		return $this->ModerationState() == 'approved';
@@ -96,7 +92,7 @@ class VersionedModeratable extends Versioned {
 			parent::augmentSQL($query);
 			Versioned::$reading_stage = $savedstage;
 			
-			if (ModeratableState::$state != 'all') {
+			if (ModeratableState::$state != 'any') {
 				$sqlfilter = self::$wheres[ModeratableState::$state];
 				$sqlfilter = str_replace("%T", $this->owner->class, $sqlfilter);
 				
@@ -133,21 +129,13 @@ class VersionedModeratable extends Versioned {
 		}
 	}
 	
-	public function markApproved() {
-		ModeratableState::mark_approved($this, $this->owner);
-	}
+	public function ModerationState()         { return Moderatable::ModerationState(); }
+	public function onModerationStateChange() { return Moderatable::onModerationStateChange(); }
 	
-	public function markUnapproved() {
-		ModeratableState::mark_unapproved($this, $this->owner);
-	}
-
-	public function markSpam() {
-		ModeratableState::mark_spam($this, $this->owner);
-	}
-
-	public function markHam() {
-		ModeratableState::mark_ham($this, $this->owner);
-	}
+	public function markApproved()            { Moderatable::markApproved(); }
+	public function markUnapproved()          { Moderatable::markUnapproved(); }
+	public function markSpam()                { Moderatable::markSpam(); }
+	public function markHam()                 { Moderatable::markHam(); }
 	
 	/**
 	 * Delete the selected instance. If the item is currently live and approved, delete this live item, and see if there is an
