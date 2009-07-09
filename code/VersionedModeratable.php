@@ -104,29 +104,69 @@ class VersionedModeratable extends Versioned {
 		}
 	}
 
+	public function augmentWrite(&$manipulation) {
+		$newVer = false;
+		foreach ($manipulation[$this->owner->class]['fields'] as $field => $value) {
+			if ($field != 'ModerationScore' && $field != 'SpamScore' && $field != 'LastEdited') { $newVer = true; break; }
+		}
+
+		/* If we do want a new version, just call parent */
+		if ($newVer) {
+			parent::augmentWrite($manipulation);
+		}
+		/* If we don't want a new version, we do still want to save the updates. We save them to the version table*/
+		else {
+			$class = $this->owner->class; $versions = $class . '_versions';
+			
+			$manipulation[$versions] = $manipulation[$class]; 
+
+			unset($manipulation[$class]);
+			unset($manipulation[$versions]['id']);
+			
+			$manipulation[$this->owner->class.'_versions']['where'] = "RecordID = {$this->owner->ID} AND Version = {$this->owner->Version}";
+		}
+	}
+	
 	public function mostRecentIsApproved() {
 		return !$this->stagesDiffer($this->defaultStage, $this->liveStage);		
 	}
 	
+	static private $supress_on_after_write = false;
+			
 	public function onAfterWrite() {
-		$new_state = $this->ModerationState();
+		if (self::$supress_on_after_write) return;
 		
-		if ($new_state == 'approved' && !$this->mostRecentIsApproved()) {
-			$this->owner->publish($this->defaultStage, 'Live');
-		}
+		// Get the newest 'approved' stage
+		$cond = str_replace("%T.", "", self::$wheres["approved"]);
+		$cond = sprintf($cond, $this->required_spam_score, $this->required_moderation_score); // approved
 		
-		elseif ($new_state != 'approved' && $this->mostRecentIsApproved()) {
+		ModeratableState::push_state("any");
+				
+		$versions = $this->allVersions($cond);
+		$approved = $versions ? $versions->First() : null ;
+
+		if (!$approved) {
 			$this->deleteFromStage($this->liveStage);
-			
-			// Get the next older approved item
-			$cond = str_replace("%T.", "", self::$wheres["approved"]);
-			$cond = sprintf($cond, $this->required_spam_score, $this->required_moderation_score); // approved
-			$versions = $this->allVersions($cond);
-			
-			if ($versions && ($olderApproved = $versions->First())) {
-				$olderApproved->publish($olderApproved->Version, $this->liveStage);
-			}
 		}
+		else {
+			self::$supress_on_after_write = true;
+			$approved->publish($approved->Version, $this->liveStage);
+			self::$supress_on_after_write = false;
+		}
+
+		$versions = $this->allVersions();
+		$latest = $versions ? $versions->First() : null ;
+		
+		if (!$latest) {
+			$this->deleteFromStage($this->defaultStage);
+		}
+		else {
+			self::$supress_on_after_write = true;
+			$approved->publish($latest->Version, $this->defaultStage);
+			self::$supress_on_after_write = false;
+		}
+		
+		ModeratableState::pop_state();
 	}
 	
 	public function ModerationState()         { return Moderatable::ModerationState(); }

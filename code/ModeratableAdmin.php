@@ -10,7 +10,7 @@ class ModeratableAdmin extends ModelAdmin {
 	static $menu_title = 'Moderation';
 	
 	static $url_handlers = array(
-		'$ClassName!/$ID!/$Command!' => 'moderate',
+		'$ClassName!/$ID!/$State!/$Command!' => 'moderate',
 	);
 	
 	static $managed_models = 'decorator:Moderatable,decorator:VersionedModeratable';
@@ -67,7 +67,8 @@ class ModeratableAdmin extends ModelAdmin {
 	function moderate() {
 		$id = (int)$this->urlParams['ID'];
 		$className = Convert::raw2sql($this->urlParams['ClassName']);
-
+		$state = Convert::raw2sql($this->urlParams['State']);
+		
 		$methods = array(
 			"delete"		=> "moderatorDelete",
 			"isspam"		=> "markSpam",
@@ -76,7 +77,7 @@ class ModeratableAdmin extends ModelAdmin {
 			"unapprove"		=> "markUnapproved"
 		);
 
-		ModeratableState::push_state('any');
+		ModeratableState::push_state($state);
 		
 		$method = $methods[$this->urlParams['Command']];
 		if (!$method) {
@@ -153,7 +154,7 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 	public function Results($searchCriteria) {
 		switch ($searchCriteria['State']) {
 			case 'approved':
-				$moderationState = "approved_if_latest";
+				$moderationState = "approved";
 				$title = "Approved";
 				$commands = array('unapprove' => 'Unapprove', 'isspam' => 'Is Spam');
 				break;
@@ -209,7 +210,7 @@ class ModeratableAdmin_CollectionController extends ModelAdmin_CollectionControl
 		if ($ds) foreach ($ds as $do) {
 			$links = array();
 			foreach ($commands as $command => $text) {
-				$links[] = "<input class='action ajaxaction' type='button' value='{$text}' action='{$this->parentController->Link("{$do->ClassName}/{$do->ID}/{$command}")}' />";
+				$links[] = "<input class='action ajaxaction' type='button' value='{$text}' action='{$this->parentController->Link("{$do->ClassName}/{$do->ID}/{$moderationState}/{$command}")}' />";
 			}
 			
 			$templates = array();
