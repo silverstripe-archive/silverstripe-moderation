@@ -153,7 +153,8 @@ class VersionedModeratable extends Versioned {
 		foreach($query->execute() as $record) return $record['Version'];
 	}
 	
-	static private $supress_triggers = false;
+	// Is public for testing. Not for normal usage
+	static public $supress_triggers = false;
 
 	private function recalculateStages() {
 		if (self::$supress_triggers) return;
