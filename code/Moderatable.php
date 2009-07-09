@@ -12,8 +12,8 @@ class Moderatable extends DataObjectDecorator {
 	);
 
 	function ModerationState() {
-		if ($this->owner->SpamScore >= $this->required_spam_score) return 'spam';
-		if ($this->owner->ModerationScore >= $this->required_moderation_score) return 'approved';
+		if ($this->owner->SpamScore >= $this->RequiredSpamScore) return 'spam';
+		if ($this->owner->ModerationScore >= $this->RequiredModerationScore) return 'approved';
 		return 'unapproved';
 	}
 	
@@ -42,11 +42,11 @@ class Moderatable extends DataObjectDecorator {
 		);
 	}
 
-	function __construct($moderation_score = null, $spam_score = null) {
+	function __construct($moderationScore = null, $spamScore = null) {
 		parent::__construct();
 
-		$this->required_moderation_score = $moderation_score ? $moderation_score : $this->stat('default_moderation_score');
-		$this->required_spam_score = $spam_score ? $spam_score : $this->stat('default_spam_score');
+		$this->RequiredModerationScore = $moderationScore ? $moderationScore : $this->stat('default_moderation_score');
+		$this->RequiredSpamScore = $spamScore ? $spamScore : $this->stat('default_spam_score');
 	}
 	
 	// Augment the SQL to only return items in the current moderation state.
@@ -60,7 +60,7 @@ class Moderatable extends DataObjectDecorator {
 		if ($query->connective == "OR") throw new Exception("Moderatable can't filter on a disjunctive query");
 
 		if (ModeratableState::$state != "any") {
-			$query->where['MSplit'] = sprintf(self::$wheres[ModeratableState::$state], $this->required_spam_score, $this->required_moderation_score);
+			$query->where['MSplit'] = sprintf(self::$wheres[ModeratableState::$state], $this->RequiredSpamScore, $this->RequiredModerationScore);
 		}
 	}
 	
@@ -71,7 +71,7 @@ class Moderatable extends DataObjectDecorator {
 	function markApproved() {
 		$old_state = $this->ModerationState();
 		
-		$this->owner->ModerationScore = $this->required_moderation_score;
+		$this->owner->ModerationScore = $this->RequiredModerationScore;
 		$this->owner->SpamScore = 0;
 		$this->owner->write();
 
@@ -90,7 +90,7 @@ class Moderatable extends DataObjectDecorator {
 	function markSpam() {
 		$old_state = $this->ModerationState();
 				
-		$this->owner->SpamScore = $this->required_spam_score;
+		$this->owner->SpamScore = $this->RequiredSpamScore;
 		$this->owner->ModerationScore = 0; // When marked as spam, item loses it's moderation approval
 		$this->owner->write();
 		

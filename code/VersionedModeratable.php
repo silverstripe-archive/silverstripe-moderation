@@ -33,12 +33,34 @@ class VersionedModeratable extends Versioned {
 	// Filter conditions per state. These are used by augmentSQL, which currently assumes the first $F is the spam score threshold and the second
 	// is the moderationScore threshold.%T is a placeholder for table substitutiuon, required on approved fetches to avoid ambiguous column names
 	private static $wheres = array(
-		'approved'   => '((%T.SpamScore < %F OR %T.SpamScore IS NULL) AND %T.ModerationScore >= %F)',
-		'unapproved' => '(%T.SpamScore < %F OR %T.SpamScore IS NULL)',
-		'spam'       => '(%T.SpamScore >= %F)',
+		'approved'   => '((`$Table`.SpamScore < $RequiredSpamScore OR `$Table`.SpamScore IS NULL) AND `$Table`.ModerationScore >= $RequiredModerationScore)',
+		'unapproved' => '(`$Table`.SpamScore < $RequiredSpamScore OR `$Table`.SpamScore IS NULL)',
+		'spam'       => '(`$Table`.SpamScore >= $RequiredSpamScore)',
 	);
+
+	private function where($what) {
+		return str_replace(
+			array('$Table', '$RequiredModerationScore', '$RequiredSpamScore'), 
+			array($this->owner->class, $this->RequiredModerationScore, $this->RequiredSpamScore), 
+			self::$wheres[$what]
+		);
+	}
 	
-	// Return true if instance is approved. Logic needs to reflect SQL logic in $wheres above.
+	function __construct($moderationScore = null, $spamScore = null) {
+		parent::__construct(array('Stage', 'Live'));
+		
+		$this->RequiredModerationScore = $moderationScore ? $moderationScore : ModeratableState::$default_moderation_score;
+		$this->RequiredSpamScore = $spamScore ? $spamScore : ModeratableState::$default_spam_score;
+	}
+
+	public function ModerationState()         { return Moderatable::ModerationState(); }
+	public function onModerationStateChange() { return Moderatable::onModerationStateChange(); }
+	
+	public function markApproved()            { Moderatable::markApproved(); }
+	public function markUnapproved()          { Moderatable::markUnapproved(); }
+	public function markSpam()                { Moderatable::markSpam(); }
+	public function markHam()                 { Moderatable::markHam(); }
+	
 	public function isApproved() {
 		return $this->ModerationState() == 'approved';
 	}
@@ -47,27 +69,15 @@ class VersionedModeratable extends Versioned {
 		return $this->ModerationState() == 'unapproved';
 	}
 
-	// Return true if instance is spam. Logic needs to reflect SQL logic in $wheres above.
 	public function isSpam() {
 		return $this->ModerationState() == 'spam';
 	}
-
-	function __construct($moderation_score = null, $spam_score = null) {
-		parent::__construct(array('Stage', 'Live'));
-		
-		$this->required_moderation_score = $moderation_score ? $moderation_score : ModeratableState::$default_moderation_score;
-		$this->required_spam_score = $spam_score ? $spam_score : ModeratableState::$default_spam_score;
-	}
-
-	// Augment the SQL to only return items in the current moderation state.
+	
+	/**
+	 * augmentSQL alters read requests to return the 'correct' DataObject, given the current Moderatable state setting
+	 */  
 	function augmentSQL(SQLQuery &$query) {
-
-		// If its disjunctive, throw an error. That would mean all approved objects would be
-		// included on all queries. The way SQLQuery works doesn't let us easily mix operators
-		// especially if there are other augmentSQL methods. The idea solution is to restructure
-		// the query so that the existing disjunction is bracketed and the query is converted to
-		// a disjunctive query. Best practice dictates we should also be idempotent, but that's
-		// beyond a 3 banana problem.
+		/* If its disjunctive, throw an error. That would mean all approved objects would be included on all queries. */
 		if ($query->connective == "OR") throw new Exception("Moderatable can't filter on a disjunctive query");
 
 		$savedstage = Versioned::$reading_stage;
@@ -79,141 +89,106 @@ class VersionedModeratable extends Versioned {
 		if (ModeratableState::$state == 'approved' || ModeratableState::$state == 'approved_if_latest') {
 			Versioned::$reading_stage = $this->liveStage;
 			parent::augmentSQL($query);
-			Versioned::$reading_stage = $savedstage;
 			
 			if (ModeratableState::$state == 'approved_if_latest') {
 				$query->from["{$stageTable}VMVerCheck"] = "LEFT JOIN `$stageTable` ON `$stageTable`.ID = `$liveTable`.ID";
 				$query->where['VMVerCheck'] = "`$stageTable`.Version <= `$liveTable`.Version";
 			}
 		}
-		/* Handle the 'all', 'unapproved' and 'spam' selections */
+		/* Handle the 'any', 'unapproved' and 'spam' selections */
 		else {
 			Versioned::$reading_stage = $this->defaultStage;
 			parent::augmentSQL($query);
-			Versioned::$reading_stage = $savedstage;
 			
 			if (ModeratableState::$state != 'any') {
-				$sqlfilter = self::$wheres[ModeratableState::$state];
-				$sqlfilter = str_replace("%T", $this->owner->class, $sqlfilter);
-				
-				$query->where['VMSpamSplit'] = sprintf($sqlfilter, $this->required_spam_score, $this->required_moderation_score);
+				$query->where['VMSpamSplit'] = $this->where(ModeratableState::$state);
 				
 				$query->leftJoin($liveTable, "`$stageTable`.ID = `$liveTable`.ID");
 				$query->where['VMVerCheck'] = "`$liveTable`.Version IS NULL OR `$stageTable`.Version > `$liveTable`.Version";
 			}
 		}
-	}
-
-	public function augmentWrite(&$manipulation) {
-		$newVer = false;
-		foreach ($manipulation[$this->owner->class]['fields'] as $field => $value) {
-			if ($field != 'ModerationScore' && $field != 'SpamScore' && $field != 'LastEdited') { $newVer = true; break; }
-		}
-
-		/* If we do want a new version, just call parent */
-		if ($newVer) {
-			parent::augmentWrite($manipulation);
-		}
-		/* If we don't want a new version, we do still want to save the updates. We save them to the version table*/
-		else {
-			$class = $this->owner->class; $versions = $class . '_versions';
-			
-			$manipulation[$versions] = $manipulation[$class]; 
-
-			unset($manipulation[$class]);
-			unset($manipulation[$versions]['id']);
-			
-			$manipulation[$this->owner->class.'_versions']['where'] = "RecordID = {$this->owner->ID} AND Version = {$this->owner->Version}";
-		}
-	}
-	
-	public function mostRecentIsApproved() {
-		return !$this->stagesDiffer($this->defaultStage, $this->liveStage);		
-	}
-	
-	static private $supress_on_after_write = false;
-			
-	public function onAfterWrite() {
-		if (self::$supress_on_after_write) return;
 		
-		// Get the newest 'approved' stage
-		$cond = str_replace("%T.", "", self::$wheres["approved"]);
-		$cond = sprintf($cond, $this->required_spam_score, $this->required_moderation_score); // approved
-		
-		ModeratableState::push_state("any");
-				
-		$versions = $this->allVersions($cond);
-		$approved = $versions ? $versions->First() : null ;
-
-		if (!$approved) {
-			$this->deleteFromStage($this->liveStage);
-		}
-		else {
-			self::$supress_on_after_write = true;
-			$approved->publish($approved->Version, $this->liveStage);
-			self::$supress_on_after_write = false;
-		}
-
-		$versions = $this->allVersions();
-		$latest = $versions ? $versions->First() : null ;
-		
-		if (!$latest) {
-			$this->deleteFromStage($this->defaultStage);
-		}
-		else {
-			self::$supress_on_after_write = true;
-			$approved->publish($latest->Version, $this->defaultStage);
-			self::$supress_on_after_write = false;
-		}
-		
-		ModeratableState::pop_state();
+		Versioned::$reading_stage = $savedstage;
 	}
-	
-	public function ModerationState()         { return Moderatable::ModerationState(); }
-	public function onModerationStateChange() { return Moderatable::onModerationStateChange(); }
-	
-	public function markApproved()            { Moderatable::markApproved(); }
-	public function markUnapproved()          { Moderatable::markUnapproved(); }
-	public function markSpam()                { Moderatable::markSpam(); }
-	public function markHam()                 { Moderatable::markHam(); }
 	
 	/**
-	 * Delete the selected instance. If the item is currently live and approved, delete this live item, and see if there is an
-	 * older approved item to replace it with. If this is an unapproved item, delete this version from stage.
+	 * augmentWrite handles the case where we're trying to update the moderation score or spam score and don't want to create a new version
 	 */
-	public function moderatorDelete($className, $id) {
-		user_error('This function is broken', E_USER_ERROR); exit();
+	public function augmentWrite(&$manipulation) {
+		/* Check to see if there are any fields other than the score fields & the LastEdited field being set. If so, hand off to Versioned to do it's thing */
+		foreach ($manipulation[$this->owner->class]['fields'] as $field => $value) {
+			if ($field != 'ModerationScore' && $field != 'SpamScore' && $field != 'LastEdited') { 
+				parent::augmentWrite($manipulation);
+				return;
+			}
+		}
+
+		/* Otherwise, we just change the manipulation to save to the versioned table, and rely on onAfterWrite to fix up the staged & live tables */
+		$class = $this->owner->class; $versions = $class . '_versions';
 		
-		ModeratableState::push_state("any");
+		$manipulation[$versions] = $manipulation[$class]; 
 
-		// If it's live, delete it from live
-		$liveObj = self::get_one_by_stage(
-			$className,
-			$this->liveStage,
-			"ID = $id");
-		$stageObj = self::get_one_by_stage(
-			$className,
-			$this->defaultStage,
-			"ID = $id");
+		unset($manipulation[$class]);
+		unset($manipulation[$versions]['id']);
+		
+		$manipulation[$this->owner->class.'_versions']['where'] = "RecordID = {$this->owner->ID} AND Version = {$this->owner->Version}";
+	}
 	
-		// Delete it from stage whether approved or not.
-		$stageObj->deleteFromStage($this->defaultStage);
+	/**
+	 * Utility function for recalculateStages, which gives the most recent version in the versions table matching a particular filter.
+	 * Partially copied from Versioned#allVersions, but that function searches by LastEdited first, before Version, which breaks our 'can update versions later' model
+	 */
+	private function latestVersionMatching($id, $filter = "") {
+		$query = $this->owner->extendedSQL($filter,"");
 
-		// If the live version is the same one, delete that too.
-		if ($stageObj->Version == $liveObj->Version)
-			$liveObj->deleteFromStage($this->liveStage);
+		foreach($query->from as $table => $join) {
+			if($join[0] == '`') $baseTable = str_replace('`','',$join);
+			else if (substr($join,0,5) != 'INNER') $query->from[$table] = "LEFT JOIN `$table` ON `$table`.RecordID = `{$baseTable}_versions`.RecordID AND `$table`.Version = `{$baseTable}_versions`.Version";
+			$query->renameTable($table, $table . '_versions');
+		}
+		$query->select[] = "`{$baseTable}_versions`.AuthorID, `{$baseTable}_versions`.Version, `{$baseTable}_versions`.RecordID";
+		$query->where[]  = "`{$baseTable}_versions`.RecordID = '{$id}'";
+		$query->orderby  = "`{$baseTable}_versions`.Version DESC";
 
-		// Get the next older item
-		$versions = $this->allVersions();
+		foreach($query->execute() as $record) return $record['Version'];
+	}
+	
+	static private $supress_triggers = false;
 
-		if ($versions && ($previous = $versions->First()))
-		{
-			// Publish $olderApproved by version no
-			$previous->publish($previous->Version, "Stage");
-			if ($previous->isApproved()) $previous->publish($previous->Version, "Live");
+	private function recalculateStages() {
+		if (self::$supress_triggers) return;
+		
+		$id = $this->owner->ID; // ID gets set to 0 on publish, so we need to save it
+		ModeratableState::push_state("any");
+		self::$supress_triggers = true;
+		
+		if ($approved = $this->latestVersionMatching($id, $this->where('approved'))) {
+			$this->owner->ID = $id;
+			$this->owner->publish($approved, $this->liveStage);
+		}
+		else {
+			ModeratableState::push_state('approved'); $this->owner->delete(); ModeratableState::pop_state();
+		}
+
+		/* Update the Default stage */
+		if ($latest = $this->latestVersionMatching($id)) {
+			$this->owner->ID = $id;
+			$this->owner->publish($latest, $this->defaultStage);
+		}
+		else {
+			$this->owner->delete();
 		}
 		
+		self::$supress_triggers = false;
 		ModeratableState::pop_state();
+	}
+	
+	public function onAfterDelete() {
+		$this->recalculateStages();
+	}
+	
+	public function onAfterWrite() {
+		$this->recalculateStages();
 	}
 }
 
