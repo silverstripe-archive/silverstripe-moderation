@@ -53,6 +53,8 @@ class VersionedModeratable extends Versioned {
 		$this->RequiredSpamScore = $spamScore ? $spamScore : ModeratableState::$default_spam_score;
 	}
 
+	/* The next few functions mix in functions from Moderatable. Calling methods statically means that $this will still point to this instance in those methods */
+	
 	public function ModerationState()         { return Moderatable::ModerationState(); }
 	public function onModerationStateChange() { return Moderatable::onModerationStateChange(); }
 	
@@ -71,6 +73,18 @@ class VersionedModeratable extends Versioned {
 
 	public function isSpam() {
 		return $this->ModerationState() == 'spam';
+	}
+	
+	public function hasUnapprovedVersion() {
+		$stage_version = Versioned::get_versionnumber_by_stage($this->owner->class, 'Stage', $this->owner->ID);
+		$live_version = Versioned::get_versionnumber_by_stage($this->owner->class, 'Live', $this->owner->ID);
+		
+		return $stage_version > $live_version;
+	}
+
+	public function hasApprovedVersion() {
+		$live_version = Versioned::get_versionnumber_by_stage($this->owner->class, 'Live', $this->owner->ID);
+		return (bool)$live_version;
 	}
 	
 	/**
@@ -158,7 +172,7 @@ class VersionedModeratable extends Versioned {
 
 	private function recalculateStages() {
 		if (self::$supress_triggers) return;
-		
+
 		$id = $this->owner->ID; // ID gets set to 0 on publish, so we need to save it
 		ModeratableState::push_state("any");
 		self::$supress_triggers = true;
