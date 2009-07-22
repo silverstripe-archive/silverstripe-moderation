@@ -133,7 +133,7 @@ class VersionedModeratable extends Versioned {
 	 */
 	public function augmentWrite(&$manipulation) {
 		/* If we want to create a new version, do that now */
-		if (self::$generate_new_version) {
+		if (!$this->owner->Version || self::$generate_new_version) {
 			self::$generate_new_version = false;
 			parent::augmentWrite($manipulation);
 			return;
