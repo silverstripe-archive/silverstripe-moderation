@@ -125,20 +125,23 @@ class VersionedModeratable extends Versioned {
 		Versioned::$reading_stage = $savedstage;
 	}
 	
+	/** If this is set to a particular version causes the next write to update an old version. It will auto-clear itself after the write */
+	protected static $generate_new_version = false;
+	
 	/**
 	 * augmentWrite handles the case where we're trying to update the moderation score or spam score and don't want to create a new version
 	 */
 	public function augmentWrite(&$manipulation) {
-		/* Check to see if there are any fields other than the score fields & the LastEdited field being set. If so, hand off to Versioned to do it's thing */
-		foreach ($manipulation[$this->owner->class]['fields'] as $field => $value) {
-			if ($field != 'ModerationScore' && $field != 'SpamScore' && $field != 'LastEdited') { 
-				parent::augmentWrite($manipulation);
-				return;
-			}
+		/* If we want to create a new version, do that now */
+		if (self::$generate_new_version) {
+			self::$generate_new_version = false;
+			parent::augmentWrite($manipulation);
+			return;
 		}
 
 		/* Otherwise, we just change the manipulation to save to the versioned table, and rely on onAfterWrite to fix up the staged & live tables */
-		$class = $this->owner->class; $versions = $class . '_versions';
+		$class = $this->owner->class; 
+		$versions = $class . '_versions';
 		
 		$manipulation[$versions] = $manipulation[$class]; 
 
@@ -146,6 +149,11 @@ class VersionedModeratable extends Versioned {
 		unset($manipulation[$versions]['id']);
 		
 		$manipulation[$this->owner->class.'_versions']['where'] = "RecordID = {$this->owner->ID} AND Version = {$this->owner->Version}";
+	}
+	
+	public function writeAsNewVersion() {
+		self::$generate_new_version = true;
+		$this->owner->write();
 	}
 	
 	/**
@@ -179,6 +187,7 @@ class VersionedModeratable extends Versioned {
 		
 		if ($approved = $this->latestVersionMatching($id, $this->where('approved'))) {
 			$this->owner->ID = $id;
+			self::$generate_new_version = true;
 			$this->owner->publish($approved, $this->liveStage);
 		}
 		else {
@@ -188,6 +197,7 @@ class VersionedModeratable extends Versioned {
 		/* Update the Default stage */
 		if ($latest = $this->latestVersionMatching($id)) {
 			$this->owner->ID = $id;
+			self::$generate_new_version = true;
 			$this->owner->publish($latest, $this->defaultStage);
 		}
 		else {
