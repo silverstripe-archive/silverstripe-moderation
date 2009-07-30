@@ -195,6 +195,7 @@ class VersionedModeratable extends Versioned {
 		}
 
 		/* Update the Default stage */
+		$this->owner->ID = $id;
 		if ($latest = $this->latestVersionMatching($id)) {
 			$this->owner->ID = $id;
 			self::$generate_new_version = true;
@@ -213,6 +214,27 @@ class VersionedModeratable extends Versioned {
 	}
 	
 	public function onAfterWrite() {
+		$this->recalculateStages();
+	}
+
+	/**
+	 * Delete the object. $version is either the version number, or "all" to completely delete the object and all versions. The two cases work
+	 * as follows:
+	 *  - if a specified version is being deleted, we remove it from the versions table for the object, and invoke the recalculateStages handler which
+	 *    will perform all reconcilation of the live and staged records for the object.
+	 *  - if all versions are being deleted, we remove all versions from the versions table, and again invoke recalculateStages.
+	 * FIX: this works on the assumption that the moderated class extends directly from DataObject.
+	 */
+	public function deleteVersioned($version) {
+		$baseTable = ClassInfo::baseDataClass($this->owner->class);
+		$q = new SQLQuery();
+		$q->from("{$baseTable}_versions");
+		$q->where("RecordID = " . $this->owner->ID);
+		if ($version != "all") $q->where("Version=" . $version);
+		$q->delete = true;
+
+		$q->execute();
+
 		$this->recalculateStages();
 	}
 }
